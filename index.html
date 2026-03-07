@@ -156,6 +156,12 @@
     color: var(--orange);
     box-shadow: 0 0 24px rgba(255, 140, 0, 0.2);
   }
+  #alert-banner.alert-cyan {
+    background: rgba(0, 200, 255, 0.12);
+    border-color: rgba(0, 200, 255, 0.4);
+    color: var(--cyan);
+    box-shadow: 0 0 24px rgba(0, 200, 255, 0.2);
+  }
   .alert-icon { font-size: 22px; flex-shrink: 0; }
   .alert-text { flex: 1; }
   .alert-sub { font-size: 11px; font-weight: 400; letter-spacing: 1px; opacity: 0.75; margin-top: 1px; }
@@ -378,7 +384,47 @@
   }
   #flash.flash-red { background: rgba(255,51,102,0.15); }
   #flash.flash-green { background: rgba(0,255,136,0.1); }
+
+  /* ── LICENSE PLATE DISPLAY ── */
+  #plate-display {
+    position: fixed; bottom: 120px; left: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    backdrop-filter: blur(16px);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--cyan);
+    letter-spacing: 2px;
+    min-width: 200px;
+    display: none;
+    z-index: 15;
+    pointer-events: none;
+    box-shadow: 0 0 20px rgba(0,200,255,0.15);
+  }
+  #plate-display.show {
+    display: block;
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  #plate-text {
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  #plate-label {
+    font-size: 10px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5"></script>
 </head>
 <body>
 
@@ -396,7 +442,8 @@
     <li><span class="fi">🚗</span><span>Detects when traffic ahead stops or starts moving</span></li>
     <li><span class="fi">🚦</span><span>Traffic light color detection</span></li>
     <li><span class="fi">⚠️</span><span>Following distance warnings</span></li>
-    <li><span class="fi">🔔</span><span>Vibration &amp; sound alerts</span></li>
+    <li><span class="fi">�</span><span>License plate detection &amp; OCR reading</span></li>
+    <li><span class="fi">�🔔</span><span>Vibration &amp; sound alerts</span></li>
   </ul>
   <button id="grant-btn" onclick="requestCamera()">ENABLE CAMERA</button>
 </div>
@@ -478,6 +525,17 @@
       <div class="metric-value" id="val-gap">—</div>
       <div class="metric-unit" id="unit-gap">DISTANCE</div>
     </div>
+    <div class="metric-card" id="card-plate">
+      <div class="metric-label">PLATE</div>
+      <div class="metric-value" id="val-plate">—</div>
+      <div class="metric-unit">DETECTED</div>
+    </div>
+  </div>
+
+  <!-- PLATE DISPLAY -->
+  <div id="plate-display">
+    <div id="plate-text">—</div>
+    <div id="plate-label">LICENSE PLATE</div>
   </div>
 
   <!-- BOTTOM BAR -->
@@ -492,6 +550,11 @@
       <button class="toggle-btn on" id="btn-gap" onclick="toggleFeature('gap')">
         <span class="btn-icon">📏</span>DISTANCE
       </button>
+      <button class="toggle-btn on" id="btn-plate" onclick="toggleFeature('plate')">
+        <span class="btn-icon">🔍</span>PLATES
+      </button>
+    </div>
+    <div id="controls-row" style="margin-bottom: 0;">
       <button class="toggle-btn on" id="btn-sound" onclick="toggleFeature('sound')">
         <span class="btn-icon">🔔</span>AUDIO
       </button>
@@ -509,7 +572,7 @@
 // ─────────────────────────────────────────────
 const state = {
   running: false,
-  features: { motion: true, light: true, gap: true, sound: true },
+  features: { motion: true, light: true, gap: true, sound: true, plate: true },
   // frame buffers
   prevFrameData: null,
   frameCount: 0,
@@ -524,12 +587,18 @@ const state = {
   // alert
   alertTimer: null,
   lastAlertTime: 0,
+  lastAlertType: '',
   // traffic light
   lastLightColor: 'none',
   lightHistory: [],
   // gap
   gapHistory: [],
   tooClose: false,
+  // license plate
+  plateHistory: [],
+  lastDetectedPlate: '',
+  plateOCRInProgress: false,
+  plateCooldown: 0,
   // audio
   audioCtx: null,
 };
@@ -539,6 +608,12 @@ const procCanvas = document.getElementById('proc-canvas');
 const overlayCanvas = document.getElementById('overlay-canvas');
 const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
 const overlayCtx = overlayCanvas.getContext('2d');
+
+// License plate detection canvas
+const plateCanvas = document.createElement('canvas');
+plateCanvas.width = 320;
+plateCanvas.height = 180;
+const plateCtx = plateCanvas.getContext('2d', { willReadFrequently: true });
 
 // ─────────────────────────────────────────────
 //  CAMERA
@@ -620,8 +695,10 @@ function clearMetrics() {
   setMetric('val-traffic','—','','card-traffic','');
   setMetric('val-light','—','','card-light','');
   setMetric('val-gap','—','','card-gap','');
+  setMetric('val-plate','—','','card-plate','');
   setMotionBar(0);
   hideAlert();
+  document.getElementById('plate-display').classList.remove('show');
   overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
 }
 
@@ -649,10 +726,13 @@ function analyzeFrame() {
     analyzeMotion(pixels, state.prevFrameData);
   }
   if (state.features.light) {
-    analyzeTrafficLight(pixels);
+    analyzeTrafficLight();
   }
   if (state.features.gap) {
     analyzeFollowingDistance(pixels);
+  }
+  if (state.features.plate) {
+    analyzeLicensePlate();
   }
 
   // save frame
@@ -666,15 +746,14 @@ function analyzeFrame() {
 // ─────────────────────────────────────────────
 function analyzeMotion(curr, prev) {
   const W = procCanvas.width, H = procCanvas.height;
-  // focus zone: upper-center third (where cars ahead appear)
-  const zx1 = Math.floor(W * 0.2), zx2 = Math.floor(W * 0.8);
-  const zy1 = Math.floor(H * 0.2), zy2 = Math.floor(H * 0.65);
+  const zx1 = Math.floor(W * 0.15), zx2 = Math.floor(W * 0.85);
+  const zy1 = Math.floor(H * 0.15), zy2 = Math.floor(H * 0.70);
 
   let diffSum = 0, pixCount = 0;
   for (let y = zy1; y < zy2; y++) {
     for (let x = zx1; x < zx2; x++) {
       const i = (y * W + x) * 4;
-      const dr = Math.abs(curr[i] - prev[i]);
+      const dr = Math.abs(curr[i]   - prev[i]);
       const dg = Math.abs(curr[i+1] - prev[i+1]);
       const db = Math.abs(curr[i+2] - prev[i+2]);
       diffSum += (dr + dg + db) / 3;
@@ -682,107 +761,182 @@ function analyzeMotion(curr, prev) {
     }
   }
   const avgDiff = pixCount > 0 ? diffSum / pixCount : 0;
-  const motionPct = Math.min(100, (avgDiff / 30) * 100);
+  const motionPct = Math.min(100, (avgDiff / 25) * 100);
 
-  // smooth
   state.motionHistory.push(motionPct);
-  if (state.motionHistory.length > 8) state.motionHistory.shift();
-  state.motionSmooth = state.motionHistory.reduce((a,b)=>a+b,0)/state.motionHistory.length;
-
+  if (state.motionHistory.length > 10) state.motionHistory.shift();
+  state.motionSmooth = state.motionHistory.reduce((a,b)=>a+b,0) / state.motionHistory.length;
   setMotionBar(state.motionSmooth);
 
-  const STOP_THRESH = 3.5;  // below this → stopped
-  const MOVE_THRESH = 7;   // above this → moving
+  const STOP_THRESH = 4;   // below → stopped
+  const MOVE_THRESH = 8;   // above → moving (hysteresis gap avoids flicker)
 
   if (state.motionSmooth < STOP_THRESH) {
-    state.stoppedFrames++;
     state.movingFrames = 0;
-    if (state.stoppedFrames >= 5 && state.lastTrafficState !== 'stopped') {
+    state.stoppedFrames++;
+    // Need 6 consecutive quiet frames (~0.7s) before declaring stopped
+    if (state.stoppedFrames === 6) {
       state.lastTrafficState = 'stopped';
       state.stopStartTime = Date.now();
-      setMetric('val-traffic','STOP','','card-traffic','danger');
-      showAlert('red','🛑','TRAFFIC STOPPED','Vehicle ahead has stopped');
-      vibrate([200,100,200]);
+      setMetric('val-traffic', 'STOP', '', 'card-traffic', 'danger');
+      showAlert('red', '🛑', 'TRAFFIC STOPPED', 'Vehicle ahead has stopped', 'traffic-stop');
+      vibrate([200, 100, 200]);
       playTone(220, 0.4, 'sawtooth');
     }
   } else if (state.motionSmooth > MOVE_THRESH) {
-    state.movingFrames++;
     state.stoppedFrames = 0;
-    if (state.movingFrames >= 4 && state.lastTrafficState === 'stopped') {
+    state.movingFrames++;
+    // Need 5 consecutive moving frames (~0.6s) before declaring moving
+    if (state.movingFrames === 5) {
+      const wasStop = state.lastTrafficState === 'stopped';
       state.lastTrafficState = 'moving';
-      setMetric('val-traffic','GO','','card-traffic','ok');
-      showAlert('green','🟢','TRAFFIC MOVING','Vehicle ahead is moving — go!');
-      vibrate([100,50,100,50,100]);
-      playTone(440, 0.3, 'sine');
-    } else if (state.lastTrafficState !== 'stopped') {
-      state.lastTrafficState = 'moving';
-      setMetric('val-traffic','MOVE','','card-traffic','ok');
+      setMetric('val-traffic', 'MOVE', '', 'card-traffic', 'ok');
+      if (wasStop) {
+        // Priority alert — bypass normal debounce for the GO signal
+        showAlert('green', '🟢', 'TRAFFIC MOVING', 'Vehicle ahead is moving — go!', 'traffic-go', true);
+        vibrate([80, 40, 80, 40, 200]);
+        playTone(523, 0.15, 'sine');
+        setTimeout(() => playTone(659, 0.15, 'sine'), 160);
+        setTimeout(() => playTone(784, 0.25, 'sine'), 320);
+      }
     }
   } else {
-    setMetric('val-traffic','SLOW','','card-traffic','warn');
+    // In-between zone — just update display, don't change state machine
+    if (state.lastTrafficState !== 'stopped') {
+      setMetric('val-traffic', 'SLOW', '', 'card-traffic', 'warn');
+    }
   }
 }
 
 // ─────────────────────────────────────────────
-//  TRAFFIC LIGHT COLOR DETECTION
+//  TRAFFIC LIGHT DETECTION — HSL hue + saturation matching
+//  Uses a separate higher-res scan canvas for accuracy
 // ─────────────────────────────────────────────
+// Separate canvas at higher resolution for light detection
+const lightCanvas = document.createElement('canvas');
+lightCanvas.width = 320; lightCanvas.height = 180;
+const lightCtx = lightCanvas.getContext('2d', { willReadFrequently: true });
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch(max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return [h * 360, s * 100, l * 100];
+}
+
 function analyzeTrafficLight(pixels) {
-  const W = procCanvas.width, H = procCanvas.height;
-  // Look in upper center strip where lights often appear
-  const zx1 = Math.floor(W*0.35), zx2 = Math.floor(W*0.65);
-  const zy1 = Math.floor(H*0.05), zy2 = Math.floor(H*0.4);
+  // Draw a fresh higher-res copy for light detection
+  lightCtx.drawImage(video, 0, 0, lightCanvas.width, lightCanvas.height);
+  const LW = lightCanvas.width, LH = lightCanvas.height;
+  const lData = lightCtx.getImageData(0, 0, LW, LH).data;
 
-  let redScore=0, greenScore=0, yellowScore=0, total=0;
+  // Scan the upper 55% of frame, center 70% horizontally
+  // (traffic lights are typically in the upper center of the windshield view)
+  const zx1 = Math.floor(LW * 0.15), zx2 = Math.floor(LW * 0.85);
+  const zy1 = Math.floor(LH * 0.02), zy2 = Math.floor(LH * 0.55);
 
-  for (let y=zy1; y<zy2; y++) {
-    for (let x=zx1; x<zx2; x++) {
-      const i=(y*W+x)*4;
-      const r=pixels[i], g=pixels[i+1], b=pixels[i+2];
-      const brightness = (r+g+b)/3;
-      // only count bright pixels (a light source)
-      if (brightness < 80) continue;
-      total++;
-      const max = Math.max(r,g,b);
-      if (max < 100) continue;
-      // red: high R, low G and B
-      if (r > 160 && g < 80 && b < 80) redScore++;
-      // green: high G, low R and B
-      if (g > 130 && r < 120 && b < 120) greenScore++;
-      // yellow: high R and G, low B
-      if (r > 150 && g > 130 && b < 80) yellowScore++;
+  let redScore = 0, greenScore = 0, yellowScore = 0;
+  // Track clusters: bright colored pixels must appear in proximity
+  const SAMPLE_STEP = 2; // check every 2nd pixel for speed
+
+  for (let y = zy1; y < zy2; y += SAMPLE_STEP) {
+    for (let x = zx1; x < zx2; x += SAMPLE_STEP) {
+      const i = (y * LW + x) * 4;
+      const r = lData[i], g = lData[i+1], b = lData[i+2];
+
+      // Must be fairly bright — traffic lights are luminous
+      const brightness = 0.299*r + 0.587*g + 0.114*b;
+      if (brightness < 100) continue;
+
+      const [h, s, l] = rgbToHsl(r, g, b);
+
+      // Must have meaningful saturation (not grey/white sky)
+      if (s < 35) continue;
+
+      // Weight by brightness — brighter pixels score more (light source effect)
+      const weight = brightness / 255;
+
+      // RED: hue 340-360 or 0-15, high saturation
+      if ((h >= 340 || h <= 15) && s > 50 && l > 25) {
+        redScore += weight;
+      }
+      // GREEN traffic light: hue 95-165 (true green, not yellow-green)
+      // Traffic lights use a fairly specific aqua-green
+      else if (h >= 95 && h <= 165 && s > 45 && l > 20) {
+        greenScore += weight;
+      }
+      // YELLOW/AMBER: hue 30-60
+      else if (h >= 28 && h <= 62 && s > 55 && l > 30) {
+        yellowScore += weight;
+      }
     }
   }
 
+  // Require a minimum score threshold to avoid false positives
+  // (a single red car tail-light shouldn't trigger)
+  const MIN_SCORE = 3.0;
   let detected = 'none';
-  const thresh = Math.max(5, total * 0.01);
-  if (redScore > thresh && redScore > greenScore && redScore > yellowScore) detected = 'red';
-  else if (greenScore > thresh && greenScore > redScore) detected = 'green';
-  else if (yellowScore > thresh && yellowScore > redScore) detected = 'yellow';
 
+  const maxScore = Math.max(redScore, greenScore, yellowScore);
+  if (maxScore >= MIN_SCORE) {
+    // Must dominate — winning color needs 40% more score than runner-up
+    if (redScore === maxScore && redScore > greenScore * 1.4 && redScore > yellowScore * 1.4) {
+      detected = 'red';
+    } else if (greenScore === maxScore && greenScore > redScore * 1.4) {
+      detected = 'green';
+    } else if (yellowScore === maxScore && yellowScore > redScore * 1.2 && yellowScore > greenScore * 1.2) {
+      detected = 'yellow';
+    }
+  }
+
+  // Longer history window (10 frames) + stricter majority needed to confirm
   state.lightHistory.push(detected);
-  if (state.lightHistory.length > 6) state.lightHistory.shift();
+  if (state.lightHistory.length > 10) state.lightHistory.shift();
 
-  // majority vote
-  const counts = {red:0,green:0,yellow:0,none:0};
+  // Need at least 6/10 frames agreeing to confirm a color
+  const counts = { red: 0, green: 0, yellow: 0, none: 0 };
   state.lightHistory.forEach(l => counts[l]++);
-  let best = 'none', bestN = 0;
-  for (const k in counts) if (counts[k]>bestN) { bestN=counts[k]; best=k; }
 
-  if (best !== state.lastLightColor) {
-    state.lastLightColor = best;
-    if (best === 'red') {
-      setMetric('val-light','RED','🔴','card-light','danger');
+  let confirmed = 'none';
+  if (counts.red >= 5)    confirmed = 'red';
+  else if (counts.green >= 5)   confirmed = 'green';
+  else if (counts.yellow >= 5)  confirmed = 'yellow';
+
+  // Store raw scores for overlay debug display
+  state.lightScores = { r: redScore, g: greenScore, y: yellowScore, detected };
+
+  if (confirmed !== state.lastLightColor) {
+    state.lastLightColor = confirmed;
+    if (confirmed === 'red') {
+      setMetric('val-light', 'RED', '', 'card-light', 'danger');
       if (state.features.light) {
-        showAlert('red','🚦','RED LIGHT DETECTED','Prepare to stop');
-        playTone(330, 0.2, 'triangle');
+        showAlert('red', '🚦', 'RED LIGHT', 'Prepare to stop', 'light-red');
+        playTone(330, 0.25, 'triangle');
+        vibrate([150, 80, 150]);
       }
-    } else if (best === 'green') {
-      setMetric('val-light','GRN','🟢','card-light','ok');
-    } else if (best === 'yellow') {
-      setMetric('val-light','YLW','🟡','card-light','warn');
-      if (state.features.light) showAlert('yellow','⚠️','YELLOW LIGHT','Prepare to stop or proceed with caution');
+    } else if (confirmed === 'green') {
+      setMetric('val-light', 'GRN', '', 'card-light', 'ok');
+      if (state.features.light && state.lastLightColor !== 'green') {
+        showAlert('green', '🟢', 'GREEN LIGHT', 'Proceed when clear', 'light-green');
+      }
+    } else if (confirmed === 'yellow') {
+      setMetric('val-light', 'YLW', '', 'card-light', 'warn');
+      if (state.features.light) {
+        showAlert('yellow', '⚠️', 'YELLOW LIGHT', 'Prepare to stop', 'light-yellow');
+        vibrate([100]);
+      }
     } else {
-      setMetric('val-light','—','','card-light','');
+      setMetric('val-light', '—', '', 'card-light', '');
     }
   }
 }
@@ -836,6 +990,120 @@ function analyzeFollowingDistance(pixels) {
 }
 
 // ─────────────────────────────────────────────
+//  LICENSE PLATE DETECTION & OCR
+// ─────────────────────────────────────────────
+const plateProcessCanvas = document.createElement('canvas');
+plateProcessCanvas.width = 400;
+plateProcessCanvas.height = 120;
+const plateProcessCtx = plateProcessCanvas.getContext('2d', { willReadFrequently: true });
+
+async function analyzeLicensePlate() {
+  // Throttle OCR to every 12 frames (~1.5s) to avoid performance issues
+  state.plateCooldown++;
+  if (state.plateOCRInProgress || state.plateCooldown < 12) return;
+  
+  if (!video.videoWidth) return;
+
+  try {
+    // Extract license plate region - typically in lower-middle portion of frame
+    // Plates are found below vehicle, centered horizontally
+    // Draw the license plate region at higher res for OCR
+    const video_aspect = video.videoWidth / video.videoHeight;
+    
+    // Plate region: lower 30% of frame, center 80% horizontally
+    const sx = Math.floor(video.videoWidth * 0.1);
+    const sy = Math.floor(video.videoHeight * 0.65);
+    const sw = Math.floor(video.videoWidth * 0.8);
+    const sh = Math.floor(video.videoHeight * 0.3);
+    
+    // Draw extracted region to canvas at higher res
+    plateProcessCtx.drawImage(video, sx, sy, sw, sh, 0, 0, plateProcessCanvas.width, plateProcessCanvas.height);
+    
+    state.plateOCRInProgress = true;
+    
+    // Run OCR on the extracted plate region
+    const result = await Tesseract.recognize(plateProcessCanvas, 'eng', {
+      logger: m => { /* silent */ }
+    });
+    
+    const rawText = result.data.text.trim().toUpperCase();
+    const confidence = result.data.confidence || 0;
+    
+    // Clean up the recognized text
+    let cleanText = rawText
+      .replace(/[^A-Z0-9\-\s]/g, '') // Keep only letters, numbers, dash, space
+      .replace(/\s+/g, ' ')           // Normalize spaces
+      .trim()
+      .substring(0, 20);              // Limit length
+    
+    // License plates typically have:
+    // - 3-8 characters in most regions
+    // - Mix of letters and numbers
+    // - Some plates have dashes or spaces
+    const hasLettersOrNumbers = /[A-Z0-9]/.test(cleanText);
+    const isReasonableLength = cleanText.length >= 2 && cleanText.length <= 15;
+    const minConfidence = 25; // Lower threshold since plate extraction should be cleaner
+    
+    if (cleanText && hasLettersOrNumbers && isReasonableLength && confidence > minConfidence) {
+      // Check if this is a new/different plate (avoid redundant detections)
+      if (cleanText !== state.lastDetectedPlate) {
+        state.lastDetectedPlate = cleanText;
+        state.plateHistory.push({
+          text: cleanText,
+          time: Date.now(),
+          confidence: confidence
+        });
+        
+        // Keep only last 5 detections
+        if (state.plateHistory.length > 5) {
+          state.plateHistory.shift();
+        }
+        
+        // Update UI
+        displayPlate(cleanText, confidence);
+        
+        // Show alert
+        if (state.features.plate) {
+          showAlert('cyan', '🔍', 'LICENSE PLATE', cleanText, 'plate-detected', false);
+          setMetric('val-plate', cleanText.substring(0, 12), '', 'card-plate', 'ok');
+        }
+      }
+    }
+    
+    state.plateOCRInProgress = false;
+    state.plateCooldown = 0;
+  } catch(e) {
+    state.plateOCRInProgress = false;
+    state.plateCooldown = 0;
+    // Silent fail - OCR not available or frame not processable
+  }
+}
+
+function displayPlate(plateText, confidence) {
+  const display = document.getElementById('plate-display');
+  const plateEl = document.getElementById('plate-text');
+  
+  if (plateEl) {
+    plateEl.textContent = plateText;
+    display.classList.add('show');
+    
+    // Set color based on confidence
+    if (confidence > 70) {
+      plateEl.style.color = 'var(--green)';
+    } else if (confidence > 50) {
+      plateEl.style.color = 'var(--yellow)';
+    } else {
+      plateEl.style.color = 'var(--cyan)';
+    }
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      display.classList.remove('show');
+    }, 5000);
+  }
+}
+
+// ─────────────────────────────────────────────
 //  OVERLAY DRAWING
 // ─────────────────────────────────────────────
 function drawOverlay() {
@@ -847,12 +1115,44 @@ function drawOverlay() {
     overlayCtx.strokeStyle = 'rgba(0,200,255,0.3)';
     overlayCtx.lineWidth = 1;
     overlayCtx.setLineDash([4,4]);
-    const zx1=W*0.2, zy1=H*0.2, zw=(W*0.8-W*0.2), zh=(H*0.65-H*0.2);
+    const zx1=W*0.15, zy1=H*0.15, zw=(W*0.85-W*0.15), zh=(H*0.70-H*0.15);
     overlayCtx.strokeRect(zx1,zy1,zw,zh);
     overlayCtx.font = '9px "Share Tech Mono"';
     overlayCtx.fillStyle = 'rgba(0,200,255,0.4)';
     overlayCtx.fillText('MOTION ZONE', zx1+4, zy1-3);
     overlayCtx.setLineDash([]);
+  }
+
+  // Light detection zone + score readout
+  if (state.features.light) {
+    overlayCtx.strokeStyle = 'rgba(255,215,0,0.25)';
+    overlayCtx.lineWidth = 1;
+    overlayCtx.setLineDash([3,5]);
+    const lx1=W*0.15, ly1=H*0.02, lw=W*0.70, lh=H*0.53;
+    overlayCtx.strokeRect(lx1, ly1, lw, lh);
+    overlayCtx.setLineDash([]);
+
+    // Score bars
+    if (state.lightScores) {
+      const s = state.lightScores;
+      const maxS = Math.max(s.r, s.g, s.y, 1);
+      const bw = 48, bh = 5, bx = W - 70, by = 80;
+      const bars = [
+        { label:'R', val:s.r, color:'rgba(255,60,80,0.8)' },
+        { label:'G', val:s.g, color:'rgba(0,255,100,0.8)' },
+        { label:'Y', val:s.y, color:'rgba(255,210,0,0.8)' },
+      ];
+      overlayCtx.font = '8px "Share Tech Mono"';
+      bars.forEach((b, idx) => {
+        const y = by + idx * 14;
+        overlayCtx.fillStyle = 'rgba(0,0,0,0.4)';
+        overlayCtx.fillRect(bx, y, bw, bh);
+        overlayCtx.fillStyle = b.color;
+        overlayCtx.fillRect(bx, y, Math.round((b.val/maxS)*bw), bh);
+        overlayCtx.fillStyle = b.color;
+        overlayCtx.fillText(b.label, bx - 10, y + bh);
+      });
+    }
   }
 
   // Motion dots — scatter effect
@@ -867,6 +1167,19 @@ function drawOverlay() {
       overlayCtx.fillStyle = `rgba(0,200,255,${alpha})`;
       overlayCtx.fill();
     }
+  }
+
+  // License plate detection zone
+  if (state.features.plate && state.running) {
+    overlayCtx.strokeStyle = 'rgba(0,255,200,0.25)';
+    overlayCtx.lineWidth = 1;
+    overlayCtx.setLineDash([5,3]);
+    const px1 = W*0.1, py1 = H*0.65, pw = W*0.8, ph = H*0.3;
+    overlayCtx.strokeRect(px1, py1, pw, ph);
+    overlayCtx.setLineDash([]);
+    overlayCtx.font = '8px "Share Tech Mono"';
+    overlayCtx.fillStyle = 'rgba(0,255,200,0.3)';
+    overlayCtx.fillText('PLATE SCAN', px1+4, py1-2);
   }
 
   // Horizontal scan line
@@ -906,9 +1219,18 @@ function setMotionBar(pct) {
 }
 
 let alertHideTimer = null;
-function showAlert(type, icon, msg, sub) {
+const alertCooldowns = {}; // per-type cooldown tracking
+
+function showAlert(type, icon, msg, sub, alertKey, priority) {
   const now = Date.now();
-  if (now - state.lastAlertTime < 2500) return; // debounce
+  const key = alertKey || msg;
+  const cooldown = priority ? 800 : 3000;
+
+  if (!priority && alertCooldowns[key] && now - alertCooldowns[key] < cooldown) return;
+  // Global cooldown for non-priority alerts (avoids two banners stacking)
+  if (!priority && now - state.lastAlertTime < 1500) return;
+
+  alertCooldowns[key] = now;
   state.lastAlertTime = now;
 
   const banner = document.getElementById('alert-banner');
