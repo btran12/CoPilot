@@ -72,31 +72,35 @@
 
   /* ── HUD LAYER ── */
   #hud {
-    position: fixed; inset: 0;
+    position: fixed; right: 0; top: 0; bottom: 0;
     z-index: 10;
     pointer-events: none;
     display: flex; flex-direction: column;
     padding: 0;
+    width: 300px;
+    background: linear-gradient(to left, rgba(8,12,16,0.95), transparent);
   }
 
   /* ── TOP BAR ── */
   #top-bar {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px 10px;
+    justify-content: flex-start;
+    padding: 10px 12px 8px;
     background: linear-gradient(to bottom, rgba(8,12,16,0.85) 0%, transparent 100%);
     pointer-events: auto;
+    gap: 4px;
   }
   .logo {
     font-family: var(--font-hud);
     font-weight: 700;
-    font-size: 20px;
-    letter-spacing: 4px;
+    font-size: 14px;
+    letter-spacing: 2px;
     color: var(--cyan);
     text-shadow: 0 0 20px rgba(0,200,255,0.6);
   }
-  .logo span { color: rgba(0,200,255,0.4); font-weight: 300; }
+  .logo span { color: rgba(0,200,255,0.4); font-weight: 300; font-size: 9px; }
   #time-display {
     font-family: var(--font-mono);
     font-size: 13px;
@@ -188,16 +192,17 @@
   /* ── METRICS ROW ── */
   #metrics {
     display: flex;
-    gap: 10px;
-    padding: 10px 12px;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 8px;
     pointer-events: auto;
   }
   .metric-card {
     flex: 1;
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 10px 12px;
+    border-radius: 8px;
+    padding: 6px 8px;
     text-align: center;
     backdrop-filter: blur(16px);
     transition: border-color 0.3s, box-shadow 0.3s;
@@ -207,15 +212,15 @@
     box-shadow: 0 0 16px rgba(0,200,255,0.15);
   }
   .metric-label {
-    font-size: 9px;
-    letter-spacing: 2px;
+    font-size: 7px;
+    letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--dim);
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     font-family: var(--font-mono);
   }
   .metric-value {
-    font-size: 22px;
+    font-size: 16px;
     font-weight: 700;
     line-height: 1;
     color: var(--cyan);
@@ -234,30 +239,30 @@
 
   /* ── BOTTOM CONTROLS ── */
   #bottom-bar {
-    padding: 12px 16px 24px;
-    background: linear-gradient(to top, rgba(8,12,16,0.9) 0%, transparent 100%);
+    padding: 8px 10px 16px;
+    background: linear-gradient(to top, rgba(8,12,16,0.95) 0%, transparent 100%);
     pointer-events: auto;
   }
   #controls-row {
-    display: flex; gap: 10px; margin-bottom: 12px;
+    display: flex; gap: 6px; margin-bottom: 8px;
   }
   .toggle-btn {
     flex: 1;
-    padding: 10px 8px;
-    border-radius: 10px;
+    padding: 7px 6px;
+    border-radius: 8px;
     border: 1px solid var(--border);
     background: var(--panel);
     color: var(--dim);
     font-family: var(--font-hud);
-    font-size: 11px; font-weight: 600;
-    letter-spacing: 1.5px; text-transform: uppercase;
+    font-size: 9px; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase;
     cursor: pointer;
     backdrop-filter: blur(12px);
     transition: all 0.25s;
     display: flex; flex-direction: column;
-    align-items: center; gap: 4px;
+    align-items: center; gap: 2px;
   }
-  .toggle-btn .btn-icon { font-size: 16px; }
+  .toggle-btn .btn-icon { font-size: 14px; }
   .toggle-btn.on {
     border-color: rgba(0,200,255,0.5);
     color: var(--cyan);
@@ -272,15 +277,15 @@
 
   #start-btn {
     width: 100%;
-    padding: 16px;
-    border-radius: 14px;
+    padding: 12px;
+    border-radius: 10px;
     border: none;
     background: linear-gradient(135deg, rgba(0,200,255,0.2), rgba(0,200,255,0.08));
     border: 1px solid rgba(0,200,255,0.4);
     color: var(--cyan);
     font-family: var(--font-hud);
-    font-size: 16px; font-weight: 700;
-    letter-spacing: 4px; text-transform: uppercase;
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
     cursor: pointer;
     backdrop-filter: blur(12px);
     transition: all 0.25s;
@@ -384,47 +389,9 @@
   }
   #flash.flash-red { background: rgba(255,51,102,0.15); }
   #flash.flash-green { background: rgba(0,255,136,0.1); }
-
-  /* ── LICENSE PLATE DISPLAY ── */
-  #plate-display {
-    position: fixed; bottom: 120px; left: 12px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 16px;
-    backdrop-filter: blur(16px);
-    font-family: var(--font-mono);
-    font-size: 14px;
-    color: var(--cyan);
-    letter-spacing: 2px;
-    min-width: 200px;
-    display: none;
-    z-index: 15;
-    pointer-events: none;
-    box-shadow: 0 0 20px rgba(0,200,255,0.15);
-  }
-  #plate-display.show {
-    display: block;
-    animation: slideIn 0.3s ease;
-  }
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  #plate-text {
-    font-weight: 700;
-    margin-bottom: 4px;
-  }
-  #plate-label {
-    font-size: 10px;
-    color: var(--dim);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5"></script>
 </head>
 <body>
 
@@ -525,17 +492,6 @@
       <div class="metric-value" id="val-gap">—</div>
       <div class="metric-unit" id="unit-gap">DISTANCE</div>
     </div>
-    <div class="metric-card" id="card-plate">
-      <div class="metric-label">PLATE</div>
-      <div class="metric-value" id="val-plate">—</div>
-      <div class="metric-unit">DETECTED</div>
-    </div>
-  </div>
-
-  <!-- PLATE DISPLAY -->
-  <div id="plate-display">
-    <div id="plate-text">—</div>
-    <div id="plate-label">LICENSE PLATE</div>
   </div>
 
   <!-- BOTTOM BAR -->
@@ -549,9 +505,6 @@
       </button>
       <button class="toggle-btn on" id="btn-gap" onclick="toggleFeature('gap')">
         <span class="btn-icon">📏</span>DISTANCE
-      </button>
-      <button class="toggle-btn on" id="btn-plate" onclick="toggleFeature('plate')">
-        <span class="btn-icon">🔍</span>PLATES
       </button>
       <button class="toggle-btn on" id="btn-detection" onclick="toggleFeature('detection')">
         <span class="btn-icon">👁️</span>OBJECTS
@@ -575,7 +528,7 @@
 // ─────────────────────────────────────────────
 const state = {
   running: false,
-  features: { motion: true, light: true, gap: true, sound: true, plate: true, detection: true },
+  features: { motion: true, light: true, gap: true, sound: true, detection: true },
   // frame buffers
   prevFrameData: null,
   frameCount: 0,
@@ -597,11 +550,6 @@ const state = {
   // gap
   gapHistory: [],
   tooClose: false,
-  // license plate
-  plateHistory: [],
-  lastDetectedPlate: '',
-  plateOCRInProgress: false,
-  plateCooldown: 0,
   // object detection
   detectionModel: null,
   modelLoaded: false,
@@ -619,6 +567,9 @@ const state = {
   lastDetectedSign: '',
   signCooldown: 0,
   speedLimitValue: null,
+  // traffic light detection
+  trafficLightCanvas: null,
+  lastDetectedLightKey: '',
   // audio
   audioCtx: null,
 };
@@ -628,12 +579,6 @@ const procCanvas = document.getElementById('proc-canvas');
 const overlayCanvas = document.getElementById('overlay-canvas');
 const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
 const overlayCtx = overlayCanvas.getContext('2d');
-
-// License plate detection canvas
-const plateCanvas = document.createElement('canvas');
-plateCanvas.width = 320;
-plateCanvas.height = 180;
-const plateCtx = plateCanvas.getContext('2d', { willReadFrequently: true });
 
 // ─────────────────────────────────────────────
 //  CAMERA
@@ -729,7 +674,6 @@ function clearMetrics() {
   setMetric('val-traffic','—','','card-traffic','');
   setMetric('val-light','—','','card-light','');
   setMetric('val-gap','—','','card-gap','');
-  setMetric('val-plate','—','','card-plate','');
   setMotionBar(0);
   state.vehicleCount = 0;
   state.bicycleCount = 0;
@@ -739,7 +683,6 @@ function clearMetrics() {
   state.lastDetectedSign = '';
   state.speedLimitValue = null;
   hideAlert();
-  document.getElementById('plate-display').classList.remove('show');
   overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
 }
 
@@ -771,9 +714,6 @@ function analyzeFrame() {
   }
   if (state.features.gap) {
     analyzeFollowingDistance(pixels);
-  }
-  if (state.features.plate) {
-    analyzeLicensePlate();
   }
   if (state.features.detection) {
     detectObjects();
@@ -1034,120 +974,6 @@ function analyzeFollowingDistance(pixels) {
 }
 
 // ─────────────────────────────────────────────
-//  LICENSE PLATE DETECTION & OCR
-// ─────────────────────────────────────────────
-const plateProcessCanvas = document.createElement('canvas');
-plateProcessCanvas.width = 400;
-plateProcessCanvas.height = 120;
-const plateProcessCtx = plateProcessCanvas.getContext('2d', { willReadFrequently: true });
-
-async function analyzeLicensePlate() {
-  // Throttle OCR to every 12 frames (~1.5s) to avoid performance issues
-  state.plateCooldown++;
-  if (state.plateOCRInProgress || state.plateCooldown < 12) return;
-  
-  if (!video.videoWidth) return;
-
-  try {
-    // Extract license plate region - typically in lower-middle portion of frame
-    // Plates are found below vehicle, centered horizontally
-    // Draw the license plate region at higher res for OCR
-    const video_aspect = video.videoWidth / video.videoHeight;
-    
-    // Plate region: lower 30% of frame, center 80% horizontally
-    const sx = Math.floor(video.videoWidth * 0.1);
-    const sy = Math.floor(video.videoHeight * 0.65);
-    const sw = Math.floor(video.videoWidth * 0.8);
-    const sh = Math.floor(video.videoHeight * 0.3);
-    
-    // Draw extracted region to canvas at higher res
-    plateProcessCtx.drawImage(video, sx, sy, sw, sh, 0, 0, plateProcessCanvas.width, plateProcessCanvas.height);
-    
-    state.plateOCRInProgress = true;
-    
-    // Run OCR on the extracted plate region
-    const result = await Tesseract.recognize(plateProcessCanvas, 'eng', {
-      logger: m => { /* silent */ }
-    });
-    
-    const rawText = result.data.text.trim().toUpperCase();
-    const confidence = result.data.confidence || 0;
-    
-    // Clean up the recognized text
-    let cleanText = rawText
-      .replace(/[^A-Z0-9\-\s]/g, '') // Keep only letters, numbers, dash, space
-      .replace(/\s+/g, ' ')           // Normalize spaces
-      .trim()
-      .substring(0, 20);              // Limit length
-    
-    // License plates typically have:
-    // - 3-8 characters in most regions
-    // - Mix of letters and numbers
-    // - Some plates have dashes or spaces
-    const hasLettersOrNumbers = /[A-Z0-9]/.test(cleanText);
-    const isReasonableLength = cleanText.length >= 2 && cleanText.length <= 15;
-    const minConfidence = 25; // Lower threshold since plate extraction should be cleaner
-    
-    if (cleanText && hasLettersOrNumbers && isReasonableLength && confidence > minConfidence) {
-      // Check if this is a new/different plate (avoid redundant detections)
-      if (cleanText !== state.lastDetectedPlate) {
-        state.lastDetectedPlate = cleanText;
-        state.plateHistory.push({
-          text: cleanText,
-          time: Date.now(),
-          confidence: confidence
-        });
-        
-        // Keep only last 5 detections
-        if (state.plateHistory.length > 5) {
-          state.plateHistory.shift();
-        }
-        
-        // Update UI
-        displayPlate(cleanText, confidence);
-        
-        // Show alert
-        if (state.features.plate) {
-          showAlert('cyan', '🔍', 'LICENSE PLATE', cleanText, 'plate-detected', false);
-          setMetric('val-plate', cleanText.substring(0, 12), '', 'card-plate', 'ok');
-        }
-      }
-    }
-    
-    state.plateOCRInProgress = false;
-    state.plateCooldown = 0;
-  } catch(e) {
-    state.plateOCRInProgress = false;
-    state.plateCooldown = 0;
-    // Silent fail - OCR not available or frame not processable
-  }
-}
-
-function displayPlate(plateText, confidence) {
-  const display = document.getElementById('plate-display');
-  const plateEl = document.getElementById('plate-text');
-  
-  if (plateEl) {
-    plateEl.textContent = plateText;
-    display.classList.add('show');
-    
-    // Set color based on confidence
-    if (confidence > 70) {
-      plateEl.style.color = 'var(--green)';
-    } else if (confidence > 50) {
-      plateEl.style.color = 'var(--yellow)';
-    } else {
-      plateEl.style.color = 'var(--cyan)';
-    }
-    
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-      display.classList.remove('show');
-    }, 5000);
-  }
-}
-
-// ─────────────────────────────────────────────
 //  OBJECT DETECTION — VEHICLES, BICYCLES, PEDESTRIANS
 // ─────────────────────────────────────────────
 async function detectObjects() {
@@ -1247,6 +1073,13 @@ async function detectObjects() {
 // ─────────────────────────────────────────────
 function detectTrafficSigns(pred) {
   const class_name = pred.class.toLowerCase();
+  
+  if (class_name === 'traffic light') {
+    // Analyze the detected traffic light bounding box for color
+    analyzeTrafficLightColor(pred);
+    return;
+  }
+  
   let signLabel = '';
   let signEmoji = '';
   let alertType = '';
@@ -1257,13 +1090,12 @@ function detectTrafficSigns(pred) {
     signEmoji = '🛑';
     alertType = 'red';
     priority = true;
-  } else if (class_name === 'traffic light') {
-    // Already handled by light detection
-    return;
   } else if (class_name === 'parking meter') {
     signLabel = 'PARKING';
     signEmoji = 'P';
     alertType = 'yellow';
+  } else {
+    return;
   }
   
   if (signLabel && signLabel !== state.lastDetectedSign) {
@@ -1283,6 +1115,143 @@ function detectTrafficSigns(pred) {
         playTone(440, 0.2, 'sine');
       }
     }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  TRAFFIC LIGHT COLOR DETECTION
+// ─────────────────────────────────────────────
+function analyzeTrafficLightColor(pred) {
+  if (!video.videoWidth) return;
+  
+  try {
+    // Create canvas for traffic light region analysis
+    if (!state.trafficLightCanvas) {
+      state.trafficLightCanvas = document.createElement('canvas');
+      state.trafficLightCanvas.width = 120;
+      state.trafficLightCanvas.height = 180;
+    }
+    
+    const ctx = state.trafficLightCanvas.getContext('2d');
+    
+    // Get bounding box from detection
+    const [x, y, width, height] = pred.bbox;
+    
+    // Add padding to capture the entire traffic light
+    const padX = width * 0.1;
+    const padY = height * 0.1;
+    const sx = Math.max(0, x - padX);
+    const sy = Math.max(0, y - padY);
+    const sw = Math.min(video.videoWidth - sx, width + padX * 2);
+    const sh = Math.min(video.videoHeight - sy, height + padY * 2);
+    
+    // Draw the traffic light region to canvas
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, state.trafficLightCanvas.width, state.trafficLightCanvas.height);
+    
+    // Analyze colors in the bounding box
+    const imageData = ctx.getImageData(0, 0, state.trafficLightCanvas.width, state.trafficLightCanvas.height);
+    const data = imageData.data;
+    
+    let redScore = 0;
+    let yellowScore = 0;
+    let greenScore = 0;
+    let pixelCount = 0;
+    
+    // Analyze each pixel for dominant color
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+      
+      if (a < 128) continue; // Skip transparent pixels
+      
+      const brightness = (r + g + b) / 3;
+      if (brightness < 50) continue; // Skip very dark pixels
+      
+      // Convert to HSL for better color detection
+      const [h, s, l] = rgbToHsl(r, g, b);
+      
+      // Only consider saturated colors (actual light, not white/gray)
+      if (s < 30) continue;
+      
+      pixelCount++;
+      const weight = brightness / 255;
+      
+      // RED: hue 340-360 or 0-20
+      if ((h >= 340 || h <= 20) && s > 50) {
+        redScore += weight * 2; // Red traffic lights are common
+      }
+      // GREEN: hue 100-150
+      else if (h >= 100 && h <= 150 && s > 40) {
+        greenScore += weight * 2;
+      }
+      // YELLOW: hue 50-80
+      else if (h >= 50 && h <= 80 && s > 50) {
+        yellowScore += weight * 1.5;
+      }
+    }
+    
+    // Normalize scores
+    if (pixelCount === 0) return;
+    
+    redScore /= pixelCount;
+    greenScore /= pixelCount;
+    yellowScore /= pixelCount;
+    
+    // Determine dominant light
+    const maxScore = Math.max(redScore, greenScore, yellowScore);
+    if (maxScore < 0.05) return; // Not enough color detected
+    
+    let lightColor = '';
+    let alertIcon = '';
+    let alertType = '';
+    let msg = '';
+    
+    // Must dominate significantly
+    if (redScore === maxScore && redScore > greenScore * 1.5 && redScore > yellowScore * 1.3) {
+      lightColor = 'RED';
+      alertIcon = '🔴';
+      alertType = 'red';
+      msg = 'Prepare to stop';
+    } else if (greenScore === maxScore && greenScore > redScore * 1.5) {
+      lightColor = 'GREEN';
+      alertIcon = '🟢';
+      alertType = 'green';
+      msg = 'Proceed when clear';
+    } else if (yellowScore === maxScore && yellowScore > redScore * 0.8) {
+      lightColor = 'YELLOW';
+      alertIcon = '🟡';
+      alertType = 'yellow';
+      msg = 'Prepare to stop';
+    } else {
+      return; // Ambiguous
+    }
+    
+    // Store light state
+    const lightKey = 'traffic-light-' + lightColor.toLowerCase();
+    if (lightKey !== state.lastDetectedLightKey) {
+      state.lastDetectedLightKey = lightKey;
+      
+      // Update metric display
+      setMetric('val-light', lightColor.substring(0,3), '', 'card-light', lightColor === 'RED' ? 'danger' : lightColor === 'GREEN' ? 'ok' : 'warn');
+      
+      if (state.features.detection) {
+        showAlert(alertType, alertIcon, 'TRAFFIC LIGHT: ' + lightColor, msg, lightKey, false);
+        
+        if (lightColor === 'GREEN') {
+          playTone(523, 0.15, 'sine');
+          setTimeout(() => playTone(659, 0.15, 'sine'), 100);
+        } else if (lightColor === 'RED') {
+          playTone(220, 0.3, 'sine');
+          vibrate([100, 50, 100]);
+        } else {
+          playTone(330, 0.2, 'sine');
+        }
+      }
+    }
+  } catch(e) {
+    // Silent fail
   }
 }
 
