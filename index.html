@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>COPILOT — Driving Assistant</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #080c10;
+    --panel: rgba(10, 16, 24, 0.88);
+    --border: rgba(0, 200, 255, 0.18);
+    --cyan: #00c8ff;
+    --green: #00ff88;
+    --yellow: #ffd700;
+    --red: #ff3366;
+    --orange: #ff8c00;
+    --text: #c8e8ff;
+    --dim: rgba(200, 232, 255, 0.45);
+    --font-hud: 'Rajdhani', sans-serif;
+    --font-mono: 'Share Tech Mono', monospace;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: var(--font-hud);
+    color: var(--text);
+    -webkit-user-select: none; user-select: none;
+  }
+
+  /* ── CAMERA LAYER ── */
+  #camera-wrap {
+    position: fixed; inset: 0;
+    background: #000;
+  }
+  #video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    filter: brightness(0.9) contrast(1.05);
+  }
+  #overlay-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  /* dark vignette on edges */
+  #camera-wrap::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 50%, transparent 40%, rgba(0,0,0,0.6) 100%);
+    pointer-events: none;
+  }
+
+  /* ── SCANLINE EFFECT ── */
+  .scanlines {
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 5;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0, 200, 255, 0.015) 3px,
+      rgba(0, 200, 255, 0.015) 4px
+    );
+  }
+
+  /* ── HUD LAYER ── */
+  #hud {
+    position: fixed; inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    display: flex; flex-direction: column;
+    padding: 0;
+  }
+
+  /* ── TOP BAR ── */
+  #top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    background: linear-gradient(to bottom, rgba(8,12,16,0.85) 0%, transparent 100%);
+    pointer-events: auto;
+  }
+  .logo {
+    font-family: var(--font-hud);
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 4px;
+    color: var(--cyan);
+    text-shadow: 0 0 20px rgba(0,200,255,0.6);
+  }
+  .logo span { color: rgba(0,200,255,0.4); font-weight: 300; }
+  #time-display {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--dim);
+    letter-spacing: 1px;
+  }
+  #status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── ALERT BANNER ── */
+  #alert-banner {
+    margin: 0 12px;
+    padding: 12px 20px;
+    border-radius: 12px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 18px; font-weight: 600; letter-spacing: 2px;
+    text-transform: uppercase;
+    backdrop-filter: blur(12px);
+    border: 1px solid transparent;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    opacity: 0; transform: translateY(-8px) scale(0.97);
+    pointer-events: auto;
+  }
+  #alert-banner.show {
+    opacity: 1; transform: translateY(0) scale(1);
+  }
+  #alert-banner.alert-green {
+    background: rgba(0, 255, 136, 0.12);
+    border-color: rgba(0, 255, 136, 0.4);
+    color: var(--green);
+    box-shadow: 0 0 24px rgba(0, 255, 136, 0.2);
+  }
+  #alert-banner.alert-yellow {
+    background: rgba(255, 215, 0, 0.12);
+    border-color: rgba(255, 215, 0, 0.4);
+    color: var(--yellow);
+    box-shadow: 0 0 24px rgba(255, 215, 0, 0.25);
+  }
+  #alert-banner.alert-red {
+    background: rgba(255, 51, 102, 0.15);
+    border-color: rgba(255, 51, 102, 0.5);
+    color: var(--red);
+    box-shadow: 0 0 32px rgba(255, 51, 102, 0.3);
+  }
+  #alert-banner.alert-orange {
+    background: rgba(255, 140, 0, 0.12);
+    border-color: rgba(255, 140, 0, 0.4);
+    color: var(--orange);
+    box-shadow: 0 0 24px rgba(255, 140, 0, 0.2);
+  }
+  .alert-icon { font-size: 22px; flex-shrink: 0; }
+  .alert-text { flex: 1; }
+  .alert-sub { font-size: 11px; font-weight: 400; letter-spacing: 1px; opacity: 0.75; margin-top: 1px; }
+
+  /* ── CENTER RETICLE ── */
+  #reticle {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -52%);
+    width: 120px; height: 80px;
+    pointer-events: none;
+  }
+  .reticle-corner {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-color: rgba(0,200,255,0.5);
+    border-style: solid;
+  }
+  .reticle-corner.tl { top:0; left:0; border-width: 2px 0 0 2px; }
+  .reticle-corner.tr { top:0; right:0; border-width: 2px 2px 0 0; }
+  .reticle-corner.bl { bottom:0; left:0; border-width: 0 0 2px 2px; }
+  .reticle-corner.br { bottom:0; right:0; border-width: 0 2px 2px 0; }
+
+  /* ── METRICS ROW ── */
+  #metrics {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    pointer-events: auto;
+  }
+  .metric-card {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    text-align: center;
+    backdrop-filter: blur(16px);
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .metric-card.active {
+    border-color: rgba(0,200,255,0.5);
+    box-shadow: 0 0 16px rgba(0,200,255,0.15);
+  }
+  .metric-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
+  }
+  .metric-value {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--cyan);
+    transition: color 0.3s;
+  }
+  .metric-value.warn { color: var(--yellow); }
+  .metric-value.danger { color: var(--red); }
+  .metric-value.ok { color: var(--green); }
+  .metric-unit {
+    font-size: 9px; color: var(--dim);
+    margin-top: 2px; font-family: var(--font-mono);
+  }
+
+  /* ── SPACER ── */
+  .flex-grow { flex: 1; }
+
+  /* ── BOTTOM CONTROLS ── */
+  #bottom-bar {
+    padding: 12px 16px 24px;
+    background: linear-gradient(to top, rgba(8,12,16,0.9) 0%, transparent 100%);
+    pointer-events: auto;
+  }
+  #controls-row {
+    display: flex; gap: 10px; margin-bottom: 12px;
+  }
+  .toggle-btn {
+    flex: 1;
+    padding: 10px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--dim);
+    font-family: var(--font-hud);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    cursor: pointer;
+    backdrop-filter: blur(12px);
+    transition: all 0.25s;
+    display: flex; flex-direction: column;
+    align-items: center; gap: 4px;
+  }
+  .toggle-btn .btn-icon { font-size: 16px; }
+  .toggle-btn.on {
+    border-color: rgba(0,200,255,0.5);
+    color: var(--cyan);
+    background: rgba(0,200,255,0.08);
+    box-shadow: 0 0 12px rgba(0,200,255,0.12);
+  }
+  .toggle-btn.warn-on {
+    border-color: rgba(255,140,0,0.5);
+    color: var(--orange);
+    background: rgba(255,140,0,0.08);
+  }
+
+  #start-btn {
+    width: 100%;
+    padding: 16px;
+    border-radius: 14px;
+    border: none;
+    background: linear-gradient(135deg, rgba(0,200,255,0.2), rgba(0,200,255,0.08));
+    border: 1px solid rgba(0,200,255,0.4);
+    color: var(--cyan);
+    font-family: var(--font-hud);
+    font-size: 16px; font-weight: 700;
+    letter-spacing: 4px; text-transform: uppercase;
+    cursor: pointer;
+    backdrop-filter: blur(12px);
+    transition: all 0.25s;
+    box-shadow: 0 0 20px rgba(0,200,255,0.1);
+    pointer-events: auto;
+  }
+  #start-btn:active { transform: scale(0.98); }
+  #start-btn.active {
+    background: linear-gradient(135deg, rgba(255,51,102,0.2), rgba(255,51,102,0.08));
+    border-color: rgba(255,51,102,0.4);
+    color: var(--red);
+    box-shadow: 0 0 20px rgba(255,51,102,0.1);
+  }
+
+  /* ── MOTION METER ── */
+  #motion-meter-wrap {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 12px 8px;
+    pointer-events: none;
+  }
+  .meter-label {
+    font-family: var(--font-mono);
+    font-size: 9px; color: var(--dim);
+    letter-spacing: 1px; white-space: nowrap;
+    width: 64px;
+  }
+  .meter-bar-bg {
+    flex: 1; height: 4px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px; overflow: hidden;
+  }
+  .meter-bar-fill {
+    height: 100%; width: 0%;
+    border-radius: 2px;
+    transition: width 0.2s ease, background 0.3s;
+    background: var(--cyan);
+  }
+
+  /* ── PERMISSIONS SCREEN ── */
+  #permissions-screen {
+    position: fixed; inset: 0; z-index: 100;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 32px;
+    text-align: center;
+  }
+  .perm-logo {
+    font-size: 28px; font-weight: 700; letter-spacing: 6px;
+    color: var(--cyan);
+    text-shadow: 0 0 30px rgba(0,200,255,0.5);
+    margin-bottom: 8px;
+  }
+  .perm-sub { font-size: 12px; letter-spacing: 3px; color: var(--dim); margin-bottom: 48px; }
+  .perm-icon { font-size: 56px; margin-bottom: 24px; }
+  .perm-title { font-size: 24px; font-weight: 700; letter-spacing: 2px; margin-bottom: 12px; }
+  .perm-desc { font-size: 14px; color: var(--dim); line-height: 1.6; margin-bottom: 40px; max-width: 300px; }
+  #grant-btn {
+    width: 100%; max-width: 300px;
+    padding: 18px; border-radius: 14px;
+    border: 1px solid rgba(0,200,255,0.4);
+    background: linear-gradient(135deg, rgba(0,200,255,0.15), rgba(0,200,255,0.05));
+    color: var(--cyan);
+    font-family: var(--font-hud);
+    font-size: 15px; font-weight: 700; letter-spacing: 4px;
+    cursor: pointer;
+    box-shadow: 0 0 30px rgba(0,200,255,0.15);
+    transition: all 0.25s;
+  }
+  #grant-btn:active { transform: scale(0.97); }
+  .feature-list {
+    list-style: none; margin-bottom: 32px; text-align: left; max-width: 280px;
+  }
+  .feature-list li {
+    display: flex; gap: 10px; align-items: flex-start;
+    font-size: 13px; color: var(--dim);
+    padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .feature-list li:last-child { border-bottom: none; }
+  .feature-list li .fi { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── GRID LINES ── */
+  .corner-decoration {
+    position: fixed; pointer-events: none; z-index: 8;
+    opacity: 0.25;
+  }
+  .corner-decoration svg { display: block; }
+  .cd-tl { top: 0; left: 0; }
+  .cd-tr { top: 0; right: 0; transform: scaleX(-1); }
+  .cd-bl { bottom: 0; left: 0; transform: scaleY(-1); }
+  .cd-br { bottom: 0; right: 0; transform: scale(-1); }
+
+  /* hidden processing canvas */
+  #proc-canvas { display: none; }
+
+  /* notification flash */
+  #flash {
+    position: fixed; inset: 0; z-index: 50;
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.1s;
+  }
+  #flash.flash-red { background: rgba(255,51,102,0.15); }
+  #flash.flash-green { background: rgba(0,255,136,0.1); }
+</style>
+</head>
+<body>
+
+<!-- FLASH -->
+<div id="flash"></div>
+
+<!-- PERMISSIONS -->
+<div id="permissions-screen">
+  <div class="perm-logo">COPILOT</div>
+  <div class="perm-sub">INTELLIGENT DRIVING ASSISTANT</div>
+  <div class="perm-icon">📷</div>
+  <div class="perm-title">Camera Access Required</div>
+  <div class="perm-desc">Point your phone at the road ahead. COPILOT will watch traffic so you stay alert.</div>
+  <ul class="feature-list">
+    <li><span class="fi">🚗</span><span>Detects when traffic ahead stops or starts moving</span></li>
+    <li><span class="fi">🚦</span><span>Traffic light color detection</span></li>
+    <li><span class="fi">⚠️</span><span>Following distance warnings</span></li>
+    <li><span class="fi">🔔</span><span>Vibration &amp; sound alerts</span></li>
+  </ul>
+  <button id="grant-btn" onclick="requestCamera()">ENABLE CAMERA</button>
+</div>
+
+<!-- CAMERA -->
+<div id="camera-wrap">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay-canvas"></canvas>
+</div>
+
+<!-- SCANLINES -->
+<div class="scanlines"></div>
+
+<!-- CORNER DECORATIONS -->
+<div class="corner-decoration cd-tl">
+  <svg width="60" height="60" viewBox="0 0 60 60"><path d="M0 60 L0 0 L60 0" stroke="#00c8ff" stroke-width="1" fill="none"/><path d="M0 40 L0 0 L40 0" stroke="#00c8ff" stroke-width="0.5" fill="none" opacity="0.5"/></svg>
+</div>
+<div class="corner-decoration cd-tr">
+  <svg width="60" height="60" viewBox="0 0 60 60"><path d="M0 60 L0 0 L60 0" stroke="#00c8ff" stroke-width="1" fill="none"/><path d="M0 40 L0 0 L40 0" stroke="#00c8ff" stroke-width="0.5" fill="none" opacity="0.5"/></svg>
+</div>
+<div class="corner-decoration cd-bl">
+  <svg width="60" height="60" viewBox="0 0 60 60"><path d="M0 60 L0 0 L60 0" stroke="#00c8ff" stroke-width="1" fill="none"/><path d="M0 40 L0 0 L40 0" stroke="#00c8ff" stroke-width="0.5" fill="none" opacity="0.5"/></svg>
+</div>
+<div class="corner-decoration cd-br">
+  <svg width="60" height="60" viewBox="0 0 60 60"><path d="M0 60 L0 0 L60 0" stroke="#00c8ff" stroke-width="1" fill="none"/><path d="M0 40 L0 0 L40 0" stroke="#00c8ff" stroke-width="0.5" fill="none" opacity="0.5"/></svg>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <!-- TOP BAR -->
+  <div id="top-bar">
+    <div class="logo">COPILOT <span>v2</span></div>
+    <div id="time-display">--:--</div>
+    <div id="status-dot"></div>
+  </div>
+
+  <!-- ALERT BANNER -->
+  <div id="alert-banner">
+    <div class="alert-icon" id="alert-icon">⚠️</div>
+    <div class="alert-text">
+      <div id="alert-msg">ALERT</div>
+      <div class="alert-sub" id="alert-sub"></div>
+    </div>
+  </div>
+
+  <!-- CENTER RETICLE -->
+  <div id="reticle" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);">
+    <div class="reticle-corner tl"></div>
+    <div class="reticle-corner tr"></div>
+    <div class="reticle-corner bl"></div>
+    <div class="reticle-corner br"></div>
+  </div>
+
+  <div class="flex-grow"></div>
+
+  <!-- MOTION METER -->
+  <div id="motion-meter-wrap">
+    <div class="meter-label">MOTION</div>
+    <div class="meter-bar-bg">
+      <div class="meter-bar-fill" id="motion-fill"></div>
+    </div>
+    <div class="meter-label" style="text-align:right;width:40px;" id="motion-pct">0%</div>
+  </div>
+
+  <!-- METRICS -->
+  <div id="metrics">
+    <div class="metric-card" id="card-traffic">
+      <div class="metric-label">TRAFFIC</div>
+      <div class="metric-value" id="val-traffic">—</div>
+      <div class="metric-unit" id="unit-traffic">MONITORING</div>
+    </div>
+    <div class="metric-card" id="card-light">
+      <div class="metric-label">SIGNAL</div>
+      <div class="metric-value" id="val-light">—</div>
+      <div class="metric-unit">DETECTED</div>
+    </div>
+    <div class="metric-card" id="card-gap">
+      <div class="metric-label">GAP</div>
+      <div class="metric-value" id="val-gap">—</div>
+      <div class="metric-unit" id="unit-gap">DISTANCE</div>
+    </div>
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bottom-bar">
+    <div id="controls-row">
+      <button class="toggle-btn on" id="btn-motion" onclick="toggleFeature('motion')">
+        <span class="btn-icon">🚗</span>TRAFFIC
+      </button>
+      <button class="toggle-btn on" id="btn-light" onclick="toggleFeature('light')">
+        <span class="btn-icon">🚦</span>SIGNALS
+      </button>
+      <button class="toggle-btn on" id="btn-gap" onclick="toggleFeature('gap')">
+        <span class="btn-icon">📏</span>DISTANCE
+      </button>
+      <button class="toggle-btn on" id="btn-sound" onclick="toggleFeature('sound')">
+        <span class="btn-icon">🔔</span>AUDIO
+      </button>
+    </div>
+    <button id="start-btn" onclick="toggleAnalysis()">START MONITORING</button>
+  </div>
+</div>
+
+<!-- HIDDEN CANVAS FOR PROCESSING -->
+<canvas id="proc-canvas"></canvas>
+
+<script>
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+const state = {
+  running: false,
+  features: { motion: true, light: true, gap: true, sound: true },
+  // frame buffers
+  prevFrameData: null,
+  frameCount: 0,
+  // motion analysis
+  motionHistory: [],
+  motionSmooth: 0,
+  trafficStopped: false,
+  stoppedFrames: 0,
+  movingFrames: 0,
+  lastTrafficState: 'unknown', // 'stopped','moving','unknown'
+  stopStartTime: 0,
+  // alert
+  alertTimer: null,
+  lastAlertTime: 0,
+  // traffic light
+  lastLightColor: 'none',
+  lightHistory: [],
+  // gap
+  gapHistory: [],
+  tooClose: false,
+  // audio
+  audioCtx: null,
+};
+
+const video = document.getElementById('video');
+const procCanvas = document.getElementById('proc-canvas');
+const overlayCanvas = document.getElementById('overlay-canvas');
+const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+const overlayCtx = overlayCanvas.getContext('2d');
+
+// ─────────────────────────────────────────────
+//  CAMERA
+// ─────────────────────────────────────────────
+async function requestCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    document.getElementById('permissions-screen').style.display = 'none';
+    resizeCanvases();
+    startClock();
+  } catch(e) {
+    alert('Camera access denied. Please allow camera access and reload.');
+  }
+}
+
+function resizeCanvases() {
+  overlayCanvas.width = overlayCanvas.offsetWidth;
+  overlayCanvas.height = overlayCanvas.offsetHeight;
+  procCanvas.width = 160; // small for perf
+  procCanvas.height = 90;
+}
+window.addEventListener('resize', resizeCanvases);
+
+// ─────────────────────────────────────────────
+//  CLOCK
+// ─────────────────────────────────────────────
+function startClock() {
+  setInterval(() => {
+    const n = new Date();
+    const h = String(n.getHours()).padStart(2,'0');
+    const m = String(n.getMinutes()).padStart(2,'0');
+    document.getElementById('time-display').textContent = `${h}:${m}`;
+  }, 1000);
+}
+
+// ─────────────────────────────────────────────
+//  TOGGLE FEATURES
+// ─────────────────────────────────────────────
+function toggleFeature(f) {
+  state.features[f] = !state.features[f];
+  const btn = document.getElementById('btn-' + f);
+  btn.classList.toggle('on', state.features[f]);
+}
+
+// ─────────────────────────────────────────────
+//  START / STOP
+// ─────────────────────────────────────────────
+function toggleAnalysis() {
+  state.running = !state.running;
+  const btn = document.getElementById('start-btn');
+  const dot = document.getElementById('status-dot');
+  if (state.running) {
+    btn.textContent = 'STOP MONITORING';
+    btn.classList.add('active');
+    dot.style.background = 'var(--cyan)';
+    dot.style.boxShadow = '0 0 8px var(--cyan)';
+    state.prevFrameData = null;
+    state.frameCount = 0;
+    runLoop();
+  } else {
+    btn.textContent = 'START MONITORING';
+    btn.classList.remove('active');
+    dot.style.background = 'var(--green)';
+    dot.style.boxShadow = '0 0 8px var(--green)';
+    clearMetrics();
+  }
+}
+
+function clearMetrics() {
+  setMetric('val-traffic','—','','card-traffic','');
+  setMetric('val-light','—','','card-light','');
+  setMetric('val-gap','—','','card-gap','');
+  setMotionBar(0);
+  hideAlert();
+  overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+}
+
+// ─────────────────────────────────────────────
+//  MAIN ANALYSIS LOOP
+// ─────────────────────────────────────────────
+let rafId = null;
+function runLoop() {
+  if (!state.running) return;
+  analyzeFrame();
+  setTimeout(() => { if (state.running) runLoop(); }, 120); // ~8fps is enough
+}
+
+function analyzeFrame() {
+  if (!video.videoWidth) return;
+
+  // draw scaled frame
+  procCtx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
+  const imgData = procCtx.getImageData(0, 0, procCanvas.width, procCanvas.height);
+  const pixels = imgData.data;
+
+  state.frameCount++;
+
+  if (state.features.motion && state.prevFrameData) {
+    analyzeMotion(pixels, state.prevFrameData);
+  }
+  if (state.features.light) {
+    analyzeTrafficLight(pixels);
+  }
+  if (state.features.gap) {
+    analyzeFollowingDistance(pixels);
+  }
+
+  // save frame
+  state.prevFrameData = new Uint8ClampedArray(pixels);
+
+  drawOverlay();
+}
+
+// ─────────────────────────────────────────────
+//  MOTION ANALYSIS — detect if traffic is moving
+// ─────────────────────────────────────────────
+function analyzeMotion(curr, prev) {
+  const W = procCanvas.width, H = procCanvas.height;
+  // focus zone: upper-center third (where cars ahead appear)
+  const zx1 = Math.floor(W * 0.2), zx2 = Math.floor(W * 0.8);
+  const zy1 = Math.floor(H * 0.2), zy2 = Math.floor(H * 0.65);
+
+  let diffSum = 0, pixCount = 0;
+  for (let y = zy1; y < zy2; y++) {
+    for (let x = zx1; x < zx2; x++) {
+      const i = (y * W + x) * 4;
+      const dr = Math.abs(curr[i] - prev[i]);
+      const dg = Math.abs(curr[i+1] - prev[i+1]);
+      const db = Math.abs(curr[i+2] - prev[i+2]);
+      diffSum += (dr + dg + db) / 3;
+      pixCount++;
+    }
+  }
+  const avgDiff = pixCount > 0 ? diffSum / pixCount : 0;
+  const motionPct = Math.min(100, (avgDiff / 30) * 100);
+
+  // smooth
+  state.motionHistory.push(motionPct);
+  if (state.motionHistory.length > 8) state.motionHistory.shift();
+  state.motionSmooth = state.motionHistory.reduce((a,b)=>a+b,0)/state.motionHistory.length;
+
+  setMotionBar(state.motionSmooth);
+
+  const STOP_THRESH = 3.5;  // below this → stopped
+  const MOVE_THRESH = 7;   // above this → moving
+
+  if (state.motionSmooth < STOP_THRESH) {
+    state.stoppedFrames++;
+    state.movingFrames = 0;
+    if (state.stoppedFrames >= 5 && state.lastTrafficState !== 'stopped') {
+      state.lastTrafficState = 'stopped';
+      state.stopStartTime = Date.now();
+      setMetric('val-traffic','STOP','','card-traffic','danger');
+      showAlert('red','🛑','TRAFFIC STOPPED','Vehicle ahead has stopped');
+      vibrate([200,100,200]);
+      playTone(220, 0.4, 'sawtooth');
+    }
+  } else if (state.motionSmooth > MOVE_THRESH) {
+    state.movingFrames++;
+    state.stoppedFrames = 0;
+    if (state.movingFrames >= 4 && state.lastTrafficState === 'stopped') {
+      state.lastTrafficState = 'moving';
+      setMetric('val-traffic','GO','','card-traffic','ok');
+      showAlert('green','🟢','TRAFFIC MOVING','Vehicle ahead is moving — go!');
+      vibrate([100,50,100,50,100]);
+      playTone(440, 0.3, 'sine');
+    } else if (state.lastTrafficState !== 'stopped') {
+      state.lastTrafficState = 'moving';
+      setMetric('val-traffic','MOVE','','card-traffic','ok');
+    }
+  } else {
+    setMetric('val-traffic','SLOW','','card-traffic','warn');
+  }
+}
+
+// ─────────────────────────────────────────────
+//  TRAFFIC LIGHT COLOR DETECTION
+// ─────────────────────────────────────────────
+function analyzeTrafficLight(pixels) {
+  const W = procCanvas.width, H = procCanvas.height;
+  // Look in upper center strip where lights often appear
+  const zx1 = Math.floor(W*0.35), zx2 = Math.floor(W*0.65);
+  const zy1 = Math.floor(H*0.05), zy2 = Math.floor(H*0.4);
+
+  let redScore=0, greenScore=0, yellowScore=0, total=0;
+
+  for (let y=zy1; y<zy2; y++) {
+    for (let x=zx1; x<zx2; x++) {
+      const i=(y*W+x)*4;
+      const r=pixels[i], g=pixels[i+1], b=pixels[i+2];
+      const brightness = (r+g+b)/3;
+      // only count bright pixels (a light source)
+      if (brightness < 80) continue;
+      total++;
+      const max = Math.max(r,g,b);
+      if (max < 100) continue;
+      // red: high R, low G and B
+      if (r > 160 && g < 80 && b < 80) redScore++;
+      // green: high G, low R and B
+      if (g > 130 && r < 120 && b < 120) greenScore++;
+      // yellow: high R and G, low B
+      if (r > 150 && g > 130 && b < 80) yellowScore++;
+    }
+  }
+
+  let detected = 'none';
+  const thresh = Math.max(5, total * 0.01);
+  if (redScore > thresh && redScore > greenScore && redScore > yellowScore) detected = 'red';
+  else if (greenScore > thresh && greenScore > redScore) detected = 'green';
+  else if (yellowScore > thresh && yellowScore > redScore) detected = 'yellow';
+
+  state.lightHistory.push(detected);
+  if (state.lightHistory.length > 6) state.lightHistory.shift();
+
+  // majority vote
+  const counts = {red:0,green:0,yellow:0,none:0};
+  state.lightHistory.forEach(l => counts[l]++);
+  let best = 'none', bestN = 0;
+  for (const k in counts) if (counts[k]>bestN) { bestN=counts[k]; best=k; }
+
+  if (best !== state.lastLightColor) {
+    state.lastLightColor = best;
+    if (best === 'red') {
+      setMetric('val-light','RED','🔴','card-light','danger');
+      if (state.features.light) {
+        showAlert('red','🚦','RED LIGHT DETECTED','Prepare to stop');
+        playTone(330, 0.2, 'triangle');
+      }
+    } else if (best === 'green') {
+      setMetric('val-light','GRN','🟢','card-light','ok');
+    } else if (best === 'yellow') {
+      setMetric('val-light','YLW','🟡','card-light','warn');
+      if (state.features.light) showAlert('yellow','⚠️','YELLOW LIGHT','Prepare to stop or proceed with caution');
+    } else {
+      setMetric('val-light','—','','card-light','');
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  FOLLOWING DISTANCE — brightness / apparent size
+// ─────────────────────────────────────────────
+function analyzeFollowingDistance(pixels) {
+  const W = procCanvas.width, H = procCanvas.height;
+  // Look at center bottom area — where close vehicle fills frame
+  const zx1 = Math.floor(W*0.25), zx2 = Math.floor(W*0.75);
+  const zy1 = Math.floor(H*0.55), zy2 = Math.floor(H*0.9);
+
+  // Count "dark" pixels (silhouette of a close vehicle) in lower center
+  let darkCount = 0, total = 0;
+  for (let y=zy1; y<zy2; y++) {
+    for (let x=zx1; x<zx2; x++) {
+      const i=(y*W+x)*4;
+      const brightness=(pixels[i]+pixels[i+1]+pixels[i+2])/3;
+      if (brightness < 60) darkCount++;
+      total++;
+    }
+  }
+  const darkRatio = total>0 ? darkCount/total : 0;
+
+  // High dark ratio in lower center = large vehicle close ahead
+  const gapScore = Math.round((1-darkRatio)*100);
+
+  state.gapHistory.push(gapScore);
+  if (state.gapHistory.length > 6) state.gapHistory.shift();
+  const smoothGap = Math.round(state.gapHistory.reduce((a,b)=>a+b,0)/state.gapHistory.length);
+
+  let label='', cls='', card='';
+  if (smoothGap < 35) {
+    label='CLOSE'; cls='danger'; card='danger';
+    if (!state.tooClose && state.features.gap) {
+      showAlert('red','⚠️','TOO CLOSE','Increase following distance');
+      vibrate([300,100,300]);
+      playTone(180, 0.5, 'square');
+      state.tooClose = true;
+    }
+  } else if (smoothGap < 55) {
+    label='NEAR'; cls='warn'; card='warn';
+    state.tooClose = false;
+  } else {
+    label='SAFE'; cls='ok'; card='';
+    state.tooClose = false;
+  }
+
+  setMetric('val-gap', label, '', 'card-gap', cls);
+}
+
+// ─────────────────────────────────────────────
+//  OVERLAY DRAWING
+// ─────────────────────────────────────────────
+function drawOverlay() {
+  const W = overlayCanvas.width, H = overlayCanvas.height;
+  overlayCtx.clearRect(0,0,W,H);
+
+  // Draw detection zone boxes
+  if (state.features.motion) {
+    overlayCtx.strokeStyle = 'rgba(0,200,255,0.3)';
+    overlayCtx.lineWidth = 1;
+    overlayCtx.setLineDash([4,4]);
+    const zx1=W*0.2, zy1=H*0.2, zw=(W*0.8-W*0.2), zh=(H*0.65-H*0.2);
+    overlayCtx.strokeRect(zx1,zy1,zw,zh);
+    overlayCtx.font = '9px "Share Tech Mono"';
+    overlayCtx.fillStyle = 'rgba(0,200,255,0.4)';
+    overlayCtx.fillText('MOTION ZONE', zx1+4, zy1-3);
+    overlayCtx.setLineDash([]);
+  }
+
+  // Motion dots — scatter effect
+  if (state.running && state.motionSmooth > 5) {
+    const count = Math.min(20, Math.floor(state.motionSmooth));
+    for (let i=0; i<count; i++) {
+      const x = W*0.2 + Math.random()*W*0.6;
+      const y = H*0.2 + Math.random()*H*0.45;
+      const alpha = (state.motionSmooth/100)*0.6;
+      overlayCtx.beginPath();
+      overlayCtx.arc(x,y,1.5,0,Math.PI*2);
+      overlayCtx.fillStyle = `rgba(0,200,255,${alpha})`;
+      overlayCtx.fill();
+    }
+  }
+
+  // Horizontal scan line
+  if (state.running) {
+    const scanY = H * 0.35 + Math.sin(Date.now()/800)*H*0.08;
+    const grad = overlayCtx.createLinearGradient(0,0,W,0);
+    grad.addColorStop(0,'transparent');
+    grad.addColorStop(0.5,'rgba(0,200,255,0.15)');
+    grad.addColorStop(1,'transparent');
+    overlayCtx.fillStyle = grad;
+    overlayCtx.fillRect(0, scanY, W, 2);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  UI HELPERS
+// ─────────────────────────────────────────────
+function setMetric(id, val, _icon, cardId, cls) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.textContent = val;
+    el.className = 'metric-value' + (cls ? ' '+cls : '');
+  }
+  const card = document.getElementById(cardId);
+  if (card) card.classList.toggle('active', !!cls);
+}
+
+function setMotionBar(pct) {
+  const fill = document.getElementById('motion-fill');
+  const label = document.getElementById('motion-pct');
+  if (!fill) return;
+  fill.style.width = Math.round(pct) + '%';
+  label.textContent = Math.round(pct) + '%';
+  if (pct > 60) fill.style.background = 'var(--green)';
+  else if (pct > 20) fill.style.background = 'var(--cyan)';
+  else fill.style.background = 'rgba(200,232,255,0.3)';
+}
+
+let alertHideTimer = null;
+function showAlert(type, icon, msg, sub) {
+  const now = Date.now();
+  if (now - state.lastAlertTime < 2500) return; // debounce
+  state.lastAlertTime = now;
+
+  const banner = document.getElementById('alert-banner');
+  banner.className = 'alert-' + type;
+  document.getElementById('alert-icon').textContent = icon;
+  document.getElementById('alert-msg').textContent = msg;
+  document.getElementById('alert-sub').textContent = sub || '';
+  banner.classList.add('show');
+
+  // flash screen
+  const flash = document.getElementById('flash');
+  flash.className = 'flash-' + (type==='green'?'green':'red');
+  flash.style.opacity = '1';
+  setTimeout(()=>flash.style.opacity='0', 200);
+
+  if (alertHideTimer) clearTimeout(alertHideTimer);
+  alertHideTimer = setTimeout(() => hideAlert(), 4000);
+}
+
+function hideAlert() {
+  document.getElementById('alert-banner').classList.remove('show');
+}
+
+// ─────────────────────────────────────────────
+//  AUDIO
+// ─────────────────────────────────────────────
+function ensureAudio() {
+  if (!state.audioCtx) {
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+function playTone(freq, duration, type='sine') {
+  if (!state.features.sound) return;
+  try {
+    ensureAudio();
+    const osc = state.audioCtx.createOscillator();
+    const gain = state.audioCtx.createGain();
+    osc.connect(gain); gain.connect(state.audioCtx.destination);
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.3, state.audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, state.audioCtx.currentTime+duration);
+    osc.start(); osc.stop(state.audioCtx.currentTime+duration);
+  } catch(e) {}
+}
+
+// ─────────────────────────────────────────────
+//  VIBRATION
+// ─────────────────────────────────────────────
+function vibrate(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern);
+}
+
+// Keep overlay canvas size in sync
+setInterval(() => {
+  if (overlayCanvas.offsetWidth !== overlayCanvas.width ||
+      overlayCanvas.offsetHeight !== overlayCanvas.height) {
+    resizeCanvases();
+  }
+  if (state.running) drawOverlay();
+}, 100);
+</script>
+</body>
+</html>
