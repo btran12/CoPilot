@@ -1,0 +1,13 @@
+# Dependencies (the app itself loads TF.js from a CDN)
+node_modules/
+
+# Test artifacts
+tests/screenshot*.png
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / editor noise
+.DS_Store
+Thumbs.db

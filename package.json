@@ -1,0 +1,11 @@
+{
+  "name": "copilot-driving-companion",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Camera-based driving companion with forward collision, lane departure and green-light alerts",
+  "scripts": {
+    "test": "node tests/smoke.mjs",
+    "serve": "python -m http.server 8080"
+  }
+}
